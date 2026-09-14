@@ -1,3 +1,4 @@
+import { loadSettings } from "../data/storage";
 export const DEFAULT_CALIBRATION_DB = 94;
 
 export const MIN_DISPLAY_DB = 0;
@@ -29,6 +30,9 @@ export const DEFAULT_SETTINGS: VolumeSettings = {
   updateIntervalMS: 5000,
   calibrationDb: DEFAULT_CALIBRATION_DB,
 };
+
+export const SAVED_SETTINGS: VolumeSettings =
+  loadSettings() || DEFAULT_SETTINGS;
 
 export function toDisplayDb(dbfs: number, calibrationDb: number): number {
   return Math.max(MIN_DISPLAY_DB, dbfs + calibrationDb);

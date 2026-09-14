@@ -24,8 +24,8 @@ export interface VolumeSettings {
 }
 
 export const DEFAULT_SETTINGS: VolumeSettings = {
-  lowDb: 44,
-  medDb: 64,
+  lowDb: 50,
+  medDb: 70,
   updateIntervalMS: 5000,
   calibrationDb: DEFAULT_CALIBRATION_DB,
 };

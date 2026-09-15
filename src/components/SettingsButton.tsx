@@ -12,6 +12,8 @@ import {
   type VolumeSettings,
 } from "../lib/volume.ts";
 
+import { saveSettings } from "../data/storage.ts";
+
 interface SettingsButtonProps {
   values: VolumeSettings;
   onChange: (values: VolumeSettings) => void;
@@ -86,11 +88,11 @@ function NumberField({
   const [hintVisible, setHintVisible] = useState(false);
 
   return (
-    <div className="space-y-1">
-      <div className="flex items-center gap-2 text-sm">
+    <div className='space-y-1'>
+      <div className='flex items-center gap-2 text-sm'>
         <input
-          className="rounded-lg w-20 border border-gray-300 bg-white text-black placeholder:text-gray-400 focus:ring-blue-500"
-          type="number"
+          className='rounded-lg w-20 border border-gray-300 bg-white text-black placeholder:text-gray-400 focus:ring-blue-500'
+          type='number'
           value={value}
           onChange={(event) => onDraftChange(event.target.value)}
           onBlur={onCommit}
@@ -101,13 +103,13 @@ function NumberField({
           }}
         />
 
-        <label className="flex-1 text-left">{label}</label>
+        <label className='flex-1 text-left'>{label}</label>
 
         <button
-          type="button"
+          type='button'
           aria-label={`Explain ${label}`}
           aria-expanded={hintVisible}
-          className="outline rounded-md px-2 text-black bg-blue-500 hover:bg-blue-300"
+          className='outline rounded-md px-2 text-black bg-blue-500 hover:bg-blue-300'
           onClick={() => setHintVisible((previous) => !previous)}
         >
           ?
@@ -115,7 +117,7 @@ function NumberField({
       </div>
 
       {hintVisible ? (
-        <p className="text-left text-xs text-gray-500">{hint}</p>
+        <p className='text-left text-xs text-gray-500'>{hint}</p>
       ) : null}
     </div>
   );
@@ -163,66 +165,68 @@ export default function SettingsButton({
     if (!save && openedWith !== values) {
       onChange(openedWith);
     }
+    saveSettings(save ? values : openedWith);
+    console.log("Settings saved:", save ? values : openedWith);
     setIsSettingsOpen(false);
   }
 
   return (
     <div>
       <button
-        type="button"
+        type='button'
         aria-label={isSettingsOpen ? "Close settings" : "Open settings"}
         aria-expanded={isSettingsOpen}
-        aria-controls="settings-panel"
+        aria-controls='settings-panel'
         onClick={handleOpen}
-        className="inline-flex items-center justify-center rounded-lg p-2 transition hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+        className='inline-flex items-center justify-center rounded-lg p-2 transition hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2'
       >
         <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          className="h-5 w-5"
-          aria-hidden="true"
+          xmlns='http://www.w3.org/2000/svg'
+          viewBox='0 0 24 24'
+          fill='none'
+          stroke='currentColor'
+          strokeWidth='2'
+          className='h-5 w-5'
+          aria-hidden='true'
         >
           <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+            strokeLinecap='round'
+            strokeLinejoin='round'
+            d='M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z'
           />
           <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+            strokeLinecap='round'
+            strokeLinejoin='round'
+            d='M15 12a3 3 0 11-6 0 3 3 0 016 0z'
           />
         </svg>
       </button>
 
       {isSettingsOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+        <div className='fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4'>
           <aside
-            id="settings-panel"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Settings"
-            className="w-full max-w-md rounded-xl bg-gray-900 p-6 shadow-xl"
+            id='settings-panel'
+            role='dialog'
+            aria-modal='true'
+            aria-label='Settings'
+            className='w-full max-w-md rounded-xl bg-gray-900 p-6 shadow-xl'
           >
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold">Settings</h2>
+            <div className='flex items-center justify-between'>
+              <h2 className='text-xl font-semibold'>Settings</h2>
 
               <button
-                type="button"
+                type='button'
                 onClick={() => handleClose(false)}
-                aria-label="Discard changes and close settings"
-                className="rounded-lg p-2 text-gray-500 hover:bg-red-400 hover:text-black"
+                aria-label='Discard changes and close settings'
+                className='rounded-lg p-2 text-gray-500 hover:bg-red-400 hover:text-black'
               >
                 ×
               </button>
             </div>
 
-            <div className="mt-6 space-y-4">
+            <div className='mt-6 space-y-4'>
               <NumberField
-                label="Quiet up to (dB)"
+                label='Quiet up to (dB)'
                 hint={`Volumes below this show green. Roughly ${MIN_DISPLAY_DB}-${MAX_DISPLAY_DB}; a quiet room is near 40 dB.`}
                 value={drafts.lowDb}
                 onDraftChange={draftSetter("lowDb")}
@@ -230,41 +234,41 @@ export default function SettingsButton({
               />
 
               <NumberField
-                label="Medium up to (dB)"
-                hint="Volumes below this show yellow and above it show red. Conversation is near 60 dB, a shout near 85 dB."
+                label='Medium up to (dB)'
+                hint='Volumes below this show yellow and above it show red. Conversation is near 60 dB, a shout near 85 dB.'
                 value={drafts.medDb}
                 onDraftChange={draftSetter("medDb")}
                 onCommit={() => commit("medDb")}
               />
 
               <NumberField
-                label="Update interval (ms)"
-                hint="How long volume is averaged before the live reading updates."
+                label='Update interval (ms)'
+                hint='How long volume is averaged before the live reading updates.'
                 value={drafts.updateIntervalMS}
                 onDraftChange={draftSetter("updateIntervalMS")}
                 onCommit={() => commit("updateIntervalMS")}
               />
 
               <NumberField
-                label="Microphone calibration (dB)"
-                hint="Browsers cannot measure true sound pressure, so readings are estimated. If a known sound reads too low, raise this; too high, lower it."
+                label='Microphone calibration (dB)'
+                hint='Browsers cannot measure true sound pressure, so readings are estimated. If a known sound reads too low, raise this; too high, lower it.'
                 value={drafts.calibrationDb}
                 onDraftChange={draftSetter("calibrationDb")}
                 onCommit={() => commit("calibrationDb")}
               />
 
-              <div className="flex justify-center gap-2">
+              <div className='flex justify-center gap-2'>
                 <button
-                  type="button"
-                  className="outline rounded-md p-2 text-black bg-gray-100 hover:bg-blue-300"
+                  type='button'
+                  className='outline rounded-md p-2 text-black bg-gray-100 hover:bg-blue-300'
                   onClick={() => onChange(DEFAULT_SETTINGS)}
                 >
                   Reset to Defaults
                 </button>
 
                 <button
-                  type="button"
-                  className="outline rounded-md p-2 text-black bg-gray-100 hover:bg-green-300"
+                  type='button'
+                  className='outline rounded-md p-2 text-black bg-gray-100 hover:bg-green-300'
                   onClick={() => handleClose(true)}
                 >
                   Save & Close

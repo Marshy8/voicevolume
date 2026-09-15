@@ -5,13 +5,16 @@ import SettingsButton from "./SettingsButton.tsx";
 import { useAudioAnalyser } from "../hooks/useAudioAnalyser.ts";
 import {
   DEFAULT_SETTINGS,
+  SAVED_SETTINGS,
   toDisplayDb,
   type VolumeSettings,
 } from "../lib/volume.ts";
 
 function AudioRecorder() {
   const [showAnalytics, setShowAnalytics] = useState(false);
-  const [settings, setSettings] = useState<VolumeSettings>(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState<VolumeSettings>(
+    SAVED_SETTINGS || DEFAULT_SETTINGS,
+  );
 
   const { recording, error, currentDbfs, historyDbfs, windowMs, start, stop } =
     useAudioAnalyser({ windowMs: settings.updateIntervalMS });

@@ -1,70 +1,53 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-
-export const SAMPLE_INTERVAL_MS = 50;
-
-const MIN_AMPLITUDE = 1e-5;
-
-const SILENCE_FLOOR_DBFS = -65;
+import {
+  SAMPLE_INTERVAL_MS,
+  SILENCE_FLOOR_DBFS,
+  median,
+  openMicrophone,
+  type MicSession,
+} from "../lib/audio.ts";
+import type { VolumeSample } from "../lib/volume.ts";
 
 export interface AudioAnalyserOptions {
   windowMs: number;
 }
 
-export function toDbfs(amplitude: number): number {
-  return 20 * Math.log10(Math.max(amplitude, MIN_AMPLITUDE));
+function trimLeadingSilence(samples: VolumeSample[]): VolumeSample[] {
+  const firstLoud = samples.findIndex(
+    (sample) => sample.dbfs > SILENCE_FLOOR_DBFS,
+  );
+  return firstLoud === -1 ? samples : samples.slice(firstLoud);
 }
 
-function readFrameDbfs(
-  analyser: AnalyserNode,
-  buffer: Float32Array<ArrayBuffer>,
-): number {
-  analyser.getFloatTimeDomainData(buffer);
-
-  let sumOfSquares = 0;
-  for (const sample of buffer) {
-    sumOfSquares += sample * sample;
-  }
-
-  return toDbfs(Math.sqrt(sumOfSquares / buffer.length));
-}
-
-function collapseWindow(readings: number[]): number {
-  if (readings.length === 0) {
-    return SILENCE_FLOOR_DBFS;
-  }
-
-  const sorted = [...readings].sort((a, b) => a - b);
-
-  return sorted[Math.floor(sorted.length / 2)];
-}
-
-function trimLeadingSilence(levels: number[]): number[] {
-  const firstLoud = levels.findIndex((level) => level > SILENCE_FLOOR_DBFS);
-  return firstLoud === -1 ? levels : levels.slice(firstLoud);
+// Readings are bucketed by wall-clock time rather than by elapsed time since
+// the recording started, so a window always covers the same absolute slice of
+// the clock no matter when Start was pressed.
+function windowStartFor(nowMs: number, windowMs: number): number {
+  return Math.floor(nowMs / windowMs) * windowMs;
 }
 
 export function useAudioAnalyser({ windowMs }: AudioAnalyserOptions) {
   const [recording, setRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentDbfs, setCurrentDbfs] = useState<number | null>(null);
-  const [historyDbfs, setHistoryDbfs] = useState<number[]>([]);
+  const [historySamples, setHistorySamples] = useState<VolumeSample[]>([]);
 
   const options = useRef({ windowMs });
   useEffect(() => {
     options.current = { windowMs };
   }, [windowMs]);
 
-  const collected = useRef<number[]>([]);
+  const collected = useRef<VolumeSample[]>([]);
 
   const start = useCallback(() => {
     setError(null);
-    setHistoryDbfs([]);
+    setHistorySamples([]);
     collected.current = [];
     setRecording(true);
   }, []);
 
   const stop = useCallback(() => {
-    setHistoryDbfs(trimLeadingSilence(collected.current));
+    setHistorySamples(trimLeadingSilence(collected.current));
     setCurrentDbfs(null);
     setRecording(false);
   }, []);
@@ -76,12 +59,12 @@ export function useAudioAnalyser({ windowMs }: AudioAnalyserOptions) {
 
     let cancelled = false;
     let timer: ReturnType<typeof setInterval> | undefined;
-    let stream: MediaStream | undefined;
-    let context: AudioContext | undefined;
+    let session: MicSession | undefined;
 
     async function run() {
+      let opened: MicSession;
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        opened = await openMicrophone();
       } catch {
         if (!cancelled) {
           setError("Microphone access was denied or is unavailable.");
@@ -90,34 +73,34 @@ export function useAudioAnalyser({ windowMs }: AudioAnalyserOptions) {
         return;
       }
 
-      context = new AudioContext();
-      await context.resume();
-
       if (cancelled) {
+        opened.close();
         return;
       }
 
-      const analyser = context.createAnalyser();
-      context.createMediaStreamSource(stream).connect(analyser);
-      const buffer = new Float32Array(analyser.fftSize);
+      session = opened;
 
       let readings: number[] = [];
-      let windowStart = performance.now();
+      let openWindowMs = windowStartFor(Date.now(), options.current.windowMs);
 
       timer = setInterval(() => {
-        readings.push(readFrameDbfs(analyser, buffer));
+        const windowStart = windowStartFor(
+          Date.now(),
+          options.current.windowMs,
+        );
 
-        const now = performance.now();
-        if (now - windowStart < options.current.windowMs) {
-          return;
+        if (windowStart !== openWindowMs) {
+          if (readings.length > 0) {
+            const level = median(readings);
+            setCurrentDbfs(level);
+            collected.current.push({ timeMs: openWindowMs, dbfs: level });
+          }
+
+          readings = [];
+          openWindowMs = windowStart;
         }
 
-        const level = collapseWindow(readings);
-        setCurrentDbfs(level);
-        collected.current.push(level);
-
-        readings = [];
-        windowStart = now;
+        readings.push(opened.readFrameDbfs());
       }, SAMPLE_INTERVAL_MS);
     }
 
@@ -126,12 +109,17 @@ export function useAudioAnalyser({ windowMs }: AudioAnalyserOptions) {
     return () => {
       cancelled = true;
       clearInterval(timer);
-      stream?.getTracks().forEach((track) => track.stop());
-      if (context && context.state !== "closed") {
-        void context.close();
-      }
+      session?.close();
     };
   }, [recording]);
 
-  return { recording, error, currentDbfs, historyDbfs, windowMs, start, stop };
+  return {
+    recording,
+    error,
+    currentDbfs,
+    historySamples,
+    windowMs,
+    start,
+    stop,
+  };
 }

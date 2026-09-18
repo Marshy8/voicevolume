@@ -16,7 +16,7 @@ function AudioRecorder() {
     SAVED_SETTINGS || DEFAULT_SETTINGS,
   );
 
-  const { recording, error, currentDbfs, historyDbfs, windowMs, start, stop } =
+  const { recording, error, currentDbfs, historySamples, start, stop } =
     useAudioAnalyser({ windowMs: settings.updateIntervalMS });
 
   const currentDb =
@@ -30,7 +30,7 @@ function AudioRecorder() {
   }
 
   return (
-    <div>
+    <div className='w-full max-w-128'>
       <LiveAnalysis
         currentDb={currentDb}
         lowDb={settings.lowDb}
@@ -43,9 +43,9 @@ function AudioRecorder() {
         </p>
       )}
 
-      <div className='grid grid-cols-3 items-center pt-4'>
+      <div className='grid grid-cols-3 items-center gap-2 pt-4'>
         <button
-          className={`justify-self-start text-black outline rounded-md p-3 disabled:opacity-50 ${
+          className={`justify-self-start text-black outline rounded-md px-4 py-3 disabled:opacity-50 ${
             recording
               ? "bg-red-500 hover:bg-red-300"
               : "bg-green-500 hover:bg-green-300"
@@ -60,7 +60,7 @@ function AudioRecorder() {
         </div>
 
         <button
-          className='justify-self-end text-black outline rounded-md p-3 bg-blue-500 hover:bg-blue-300'
+          className='justify-self-end text-black outline rounded-md px-4 py-3 bg-blue-500 hover:bg-blue-300'
           onClick={() => setShowAnalytics(true)}
         >
           Analytics
@@ -69,8 +69,7 @@ function AudioRecorder() {
 
       <AnalyticsModal
         open={showAnalytics}
-        historyDbfs={historyDbfs}
-        intervalMs={windowMs}
+        samples={historySamples}
         calibrationDb={settings.calibrationDb}
         lowDb={settings.lowDb}
         medDb={settings.medDb}

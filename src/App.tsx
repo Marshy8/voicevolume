@@ -2,14 +2,14 @@ import AudioRecorder from "./components/AudioRecorder.tsx";
 
 function App() {
   return (
-    <div className="min-h-screen p-4 flex justify-between flex-col gap-4">
-      <label className="text-4xl">VoiceVolume</label>
+    <div className="min-h-svh p-4 flex justify-between flex-col gap-4">
+      <label className="text-3xl sm:text-4xl">VoiceVolume</label>
 
-      <div className="flex justify-center gap-4">
+      <div className="flex w-full justify-center gap-4">
         <AudioRecorder />
       </div>
 
-      <label className="flex justify-center gap-1">
+      <label className="flex flex-wrap justify-center gap-x-1 gap-y-0 text-sm sm:text-base">
         <span>Built by</span>
         <a
           className="text-blue-500 hover:text-blue-300"

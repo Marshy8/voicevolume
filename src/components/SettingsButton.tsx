@@ -1,16 +1,23 @@
-import { useState } from "react";
+import { useId, useState, type CSSProperties } from "react";
 import {
   DEFAULT_SETTINGS,
   MAX_CALIBRATION_DB,
   MAX_DISPLAY_DB,
-  MAX_UPDATE_INTERVAL_MS,
   MIN_CALIBRATION_DB,
   MIN_DISPLAY_DB,
-  MIN_UPDATE_INTERVAL_MS,
-  MIN_ZONE_GAP_DB,
-  clampDisplayDb,
+  UPDATE_INTERVAL_CHOICES_MS,
+  ZONE_FILL,
+  formatInterval,
+  intervalIndex,
+  withThreshold,
+  zoneGradientCss,
   type VolumeSettings,
 } from "../lib/volume.ts";
+import {
+  CALIBRATION_DURATION_MS,
+  CALIBRATION_REFERENCE_DB,
+} from "../lib/calibration.ts";
+import { useCalibration } from "../hooks/useCalibration.ts";
 
 import { saveSettings } from "../data/storage.ts";
 
@@ -19,102 +26,72 @@ interface SettingsButtonProps {
   onChange: (values: VolumeSettings) => void;
 }
 
-type FieldName = keyof VolumeSettings;
-
-type Drafts = Record<FieldName, string>;
-
-function toDrafts(values: VolumeSettings): Drafts {
-  return {
-    lowDb: String(values.lowDb),
-    medDb: String(values.medDb),
-    updateIntervalMS: String(values.updateIntervalMS),
-    calibrationDb: String(values.calibrationDb),
-  };
+function fillTrack(percent: number): string {
+  return `linear-gradient(to right, var(--accent) 0 ${percent}%, var(--border) ${percent}% 100%)`;
 }
 
-function commitField(
-  field: FieldName,
-  raw: string,
-  current: VolumeSettings,
-): number | null {
-  const trimmed = raw.trim();
-  if (trimmed === "") {
-    return null;
-  }
-
-  const parsed = Number(trimmed);
-  if (!Number.isFinite(parsed)) {
-    return null;
-  }
-
-  const rounded = Math.round(parsed);
-
-  switch (field) {
-    case "lowDb":
-      return Math.min(clampDisplayDb(rounded), current.medDb - MIN_ZONE_GAP_DB);
-
-    case "medDb":
-      return Math.max(clampDisplayDb(rounded), current.lowDb + MIN_ZONE_GAP_DB);
-
-    case "updateIntervalMS":
-      return Math.min(
-        MAX_UPDATE_INTERVAL_MS,
-        Math.max(MIN_UPDATE_INTERVAL_MS, rounded),
-      );
-
-    case "calibrationDb":
-      return Math.min(
-        MAX_CALIBRATION_DB,
-        Math.max(MIN_CALIBRATION_DB, rounded),
-      );
-  }
-}
-
-interface NumberFieldProps {
+interface SliderFieldProps {
   label: string;
+  valueLabel: string;
   hint: string;
-  value: string;
-  onDraftChange: (raw: string) => void;
-  onCommit: () => void;
+  min: number;
+  max: number;
+  step?: number;
+  value: number;
+  track: string;
+  thumb?: string;
+  disabled?: boolean;
+  onChange: (value: number) => void;
 }
 
-function NumberField({
+function SliderField({
   label,
+  valueLabel,
   hint,
+  min,
+  max,
+  step = 1,
   value,
-  onDraftChange,
-  onCommit,
-}: NumberFieldProps) {
+  track,
+  thumb,
+  disabled,
+  onChange,
+}: SliderFieldProps) {
   const [hintVisible, setHintVisible] = useState(false);
+  const inputId = useId();
 
   return (
     <div className='space-y-1'>
       <div className='flex items-center gap-2 text-sm'>
-        <input
-          className='rounded-lg w-20 border border-gray-300 bg-white text-black placeholder:text-gray-400 focus:ring-blue-500'
-          type='number'
-          value={value}
-          onChange={(event) => onDraftChange(event.target.value)}
-          onBlur={onCommit}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.currentTarget.blur();
-            }
-          }}
-        />
+        <label htmlFor={inputId} className='min-w-0 flex-1 text-left'>
+          {label}
+        </label>
 
-        <label className='flex-1 text-left'>{label}</label>
+        <span className='tabular-nums text-right'>{valueLabel}</span>
 
         <button
           type='button'
           aria-label={`Explain ${label}`}
           aria-expanded={hintVisible}
-          className='outline rounded-md px-2 text-black bg-blue-500 hover:bg-blue-300'
+          className='shrink-0 outline rounded-md px-2 text-black bg-blue-500 hover:bg-blue-300'
           onClick={() => setHintVisible((previous) => !previous)}
         >
           ?
         </button>
       </div>
+
+      <input
+        id={inputId}
+        type='range'
+        className='zone-slider'
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(Number(event.target.value))}
+        style={{ "--track": track, "--thumb": thumb } as CSSProperties}
+      />
 
       {hintVisible ? (
         <p className='text-left text-xs text-gray-500'>{hint}</p>
@@ -128,47 +105,46 @@ export default function SettingsButton({
   onChange,
 }: SettingsButtonProps) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [drafts, setDrafts] = useState<Drafts>(() => toDrafts(values));
-  const [lastValues, setLastValues] = useState(values);
-  const [openedWith, setOpenedWith] = useState(values);
 
-  if (values !== lastValues) {
-    setLastValues(values);
-    setDrafts(toDrafts(values));
-  }
+  // Edits stay in this draft while the panel is open, so a live recording is
+  // untouched until Save & Close is pressed.
+  const [draft, setDraft] = useState(values);
 
-  function commit(field: FieldName) {
-    const accepted = commitField(field, drafts[field], values);
+  const calibration = useCalibration((calibrationDb) =>
+    setDraft((previous) => ({ ...previous, calibrationDb })),
+  );
 
-    if (accepted === null) {
-      setDrafts((previous) => ({
-        ...previous,
-        [field]: String(values[field]),
-      }));
-      return;
-    }
-
-    onChange({ ...values, [field]: accepted });
-  }
-
-  function draftSetter(field: FieldName) {
-    return (raw: string) =>
-      setDrafts((previous) => ({ ...previous, [field]: raw }));
-  }
+  const listening = calibration.status === "listening";
+  const zoneTrack = zoneGradientCss(draft.lowDb, draft.medDb);
 
   function handleOpen() {
-    setOpenedWith(values);
+    setDraft(values);
     setIsSettingsOpen(true);
   }
 
   function handleClose(save: boolean) {
-    if (!save && openedWith !== values) {
-      onChange(openedWith);
+    calibration.cancel();
+
+    if (save) {
+      onChange(draft);
+      saveSettings(draft);
     }
-    saveSettings(save ? values : openedWith);
-    console.log("Settings saved:", save ? values : openedWith);
+
     setIsSettingsOpen(false);
   }
+
+  const calibrationMessage = (() => {
+    switch (calibration.status) {
+      case "listening":
+        return `Keep talking normally… ${Math.ceil(calibration.msLeft / 1000)}s`;
+      case "done":
+        return `Set to ${calibration.result} dB from your speech.`;
+      case "error":
+        return calibration.error;
+      default:
+        return `Speak normally for ${CALIBRATION_DURATION_MS / 1000}s and this is set for you.`;
+    }
+  })();
 
   return (
     <div>
@@ -203,13 +179,13 @@ export default function SettingsButton({
       </button>
 
       {isSettingsOpen && (
-        <div className='fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4'>
+        <div className='fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-4'>
           <aside
             id='settings-panel'
             role='dialog'
             aria-modal='true'
             aria-label='Settings'
-            className='w-full max-w-md rounded-xl bg-gray-900 p-6 shadow-xl'
+            className='max-h-[92svh] w-full max-w-md overflow-y-auto overscroll-contain rounded-xl bg-gray-900 p-4 shadow-xl sm:p-6'
           >
             <div className='flex items-center justify-between'>
               <h2 className='text-xl font-semibold'>Settings</h2>
@@ -224,44 +200,102 @@ export default function SettingsButton({
               </button>
             </div>
 
-            <div className='mt-6 space-y-4'>
-              <NumberField
-                label='Quiet up to (dB)'
-                hint={`Volumes below this show green. Roughly ${MIN_DISPLAY_DB}-${MAX_DISPLAY_DB}; a quiet room is near 40 dB.`}
-                value={drafts.lowDb}
-                onDraftChange={draftSetter("lowDb")}
-                onCommit={() => commit("lowDb")}
+            <div className='mt-4 space-y-5 sm:mt-6'>
+              <SliderField
+                label='Quiet up to'
+                valueLabel={`${draft.lowDb} dB`}
+                hint={`Volumes below this show green. Roughly ${MIN_DISPLAY_DB}-${MAX_DISPLAY_DB}; a quiet room is near 40 dB. Pushing this past the medium limit carries that limit along with it.`}
+                min={MIN_DISPLAY_DB}
+                max={MAX_DISPLAY_DB}
+                value={draft.lowDb}
+                track={zoneTrack}
+                thumb={ZONE_FILL.low}
+                onChange={(value) =>
+                  setDraft((previous) => withThreshold(previous, "lowDb", value))
+                }
               />
 
-              <NumberField
-                label='Medium up to (dB)'
-                hint='Volumes below this show yellow and above it show red. Conversation is near 60 dB, a shout near 85 dB.'
-                value={drafts.medDb}
-                onDraftChange={draftSetter("medDb")}
-                onCommit={() => commit("medDb")}
+              <SliderField
+                label='Medium up to'
+                valueLabel={`${draft.medDb} dB`}
+                hint='Volumes below this show yellow and above it show red. Conversation is near 60 dB, a shout near 85 dB. Pulling this below the quiet limit carries that limit along with it.'
+                min={MIN_DISPLAY_DB}
+                max={MAX_DISPLAY_DB}
+                value={draft.medDb}
+                track={zoneTrack}
+                thumb={ZONE_FILL.medium}
+                onChange={(value) =>
+                  setDraft((previous) => withThreshold(previous, "medDb", value))
+                }
               />
 
-              <NumberField
-                label='Update interval (ms)'
-                hint='How long volume is averaged before the live reading updates.'
-                value={drafts.updateIntervalMS}
-                onDraftChange={draftSetter("updateIntervalMS")}
-                onCommit={() => commit("updateIntervalMS")}
+              <SliderField
+                label='Update interval'
+                valueLabel={formatInterval(draft.updateIntervalMS)}
+                hint='How long volume is averaged before the live reading updates. Only values that divide evenly into a minute are offered, so each minute on the analytics chart is built from whole readings.'
+                min={0}
+                max={UPDATE_INTERVAL_CHOICES_MS.length - 1}
+                value={intervalIndex(draft.updateIntervalMS)}
+                track={fillTrack(
+                  (intervalIndex(draft.updateIntervalMS) /
+                    (UPDATE_INTERVAL_CHOICES_MS.length - 1)) *
+                    100,
+                )}
+                onChange={(index) =>
+                  setDraft((previous) => ({
+                    ...previous,
+                    updateIntervalMS: UPDATE_INTERVAL_CHOICES_MS[index],
+                  }))
+                }
               />
 
-              <NumberField
-                label='Microphone calibration (dB)'
-                hint='Browsers cannot measure true sound pressure, so readings are estimated. If a known sound reads too low, raise this; too high, lower it.'
-                value={drafts.calibrationDb}
-                onDraftChange={draftSetter("calibrationDb")}
-                onCommit={() => commit("calibrationDb")}
-              />
+              <div className='space-y-2'>
+                <SliderField
+                  label='Microphone calibration'
+                  valueLabel={`${draft.calibrationDb} dB`}
+                  hint={`Browsers cannot measure true sound pressure, so readings are estimated. If a known sound reads too low, raise this; too high, lower it. Auto-calibrate assumes your normal speaking voice is ${CALIBRATION_REFERENCE_DB} dB.`}
+                  min={MIN_CALIBRATION_DB}
+                  max={MAX_CALIBRATION_DB}
+                  value={draft.calibrationDb}
+                  disabled={listening}
+                  track={fillTrack(
+                    ((draft.calibrationDb - MIN_CALIBRATION_DB) /
+                      (MAX_CALIBRATION_DB - MIN_CALIBRATION_DB)) *
+                      100,
+                  )}
+                  onChange={(calibrationDb) =>
+                    setDraft((previous) => ({ ...previous, calibrationDb }))
+                  }
+                />
 
-              <div className='flex justify-center gap-2'>
+                <div className='flex flex-wrap items-center gap-3'>
+                  <button
+                    type='button'
+                    disabled={listening}
+                    onClick={() => void calibration.run()}
+                    className='shrink-0 outline rounded-md px-3 py-1 text-sm text-black bg-gray-100 hover:bg-green-300 disabled:opacity-60'
+                  >
+                    {listening ? "Listening…" : "Auto-calibrate"}
+                  </button>
+
+                  <p
+                    className={`min-w-40 flex-1 text-left text-xs ${
+                      calibration.status === "error"
+                        ? "text-red-400"
+                        : "text-gray-500"
+                    }`}
+                    role={calibration.status === "error" ? "alert" : undefined}
+                  >
+                    {calibrationMessage}
+                  </p>
+                </div>
+              </div>
+
+              <div className='flex flex-wrap justify-center gap-2'>
                 <button
                   type='button'
                   className='outline rounded-md p-2 text-black bg-gray-100 hover:bg-blue-300'
-                  onClick={() => onChange(DEFAULT_SETTINGS)}
+                  onClick={() => setDraft(DEFAULT_SETTINGS)}
                 >
                   Reset to Defaults
                 </button>
